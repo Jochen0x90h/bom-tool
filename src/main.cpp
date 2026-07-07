@@ -218,6 +218,11 @@ int main(int argc, const char **argv) {
         kicad::Container file;
         kicad::readFile(s, file);
         s.close();
+        if (file.elements.empty()) {
+            // error
+            std::cout << "Error: File is empty " << job.pcbPath.string() << std::endl;
+            return 1;
+        }
 
         // get last write time of pcb
         auto pcbTime = fs::last_write_time(job.pcbPath);
@@ -439,11 +444,11 @@ int main(int argc, const char **argv) {
                         error = true;
                     }
                 } else {
-                    std::cerr << "Error: Gerber directory configuration not found" << std::endl;
+                    std::cerr << "Error: Section 'pcbplotparams' not found in .kicad_pcb" << std::endl;
                     error = true;
                 }
             } else {
-                std::cerr << "Error: Gerber directory configuration not found" << std::endl;
+                std::cerr << "Error: Section 'setup' not found in .kicad_pcb" << std::endl;
                 error = true;
             }
         }

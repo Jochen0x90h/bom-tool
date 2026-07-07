@@ -5,8 +5,8 @@ from conan.tools.cmake import CMake
 
 class Project(ConanFile):
     name = "bom-tool"
-    description = "Tool for generating bill of materials and placement files from KiCad layouts"
-    url = "https://github.com/Jochen0x90h/BomTool"
+    description = "Tool for generating bill of materials and placement files from KiCad PCB (.kicad_pcb) files"
+    url = "https://github.com/Jochen0x90h/bom-tool"
     license = "MIT"
     settings = "os", "compiler", "build_type", "arch"
     default_options = {}
