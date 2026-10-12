@@ -385,12 +385,12 @@ int main(int argc, const char **argv) {
                         // export gerber
                         {
                             std::cout << "Export gerber" << std::endl;
-                            // add --check-zones
-                            std::string command = "kicad-cli pcb export gerbers -l " + selectedLayers + " --subtract-soldermask --output " + gerberDir.string() + ' ' + job.pcbPath.string();
+                            // --check-zones refills zones, but does not save
+                            std::string command = "kicad-cli pcb export gerbers -l " + selectedLayers + " --subtract-soldermask --check-zones --output " + gerberDir.string() + ' ' + job.pcbPath.string();
                             int result = std::system(command.c_str());
                             if (result != 0) {
                                 error = true;
-                                std::cerr << "Error: Gerber export, kicad-cli returned result " << result << std::endl;
+                                std::cerr << "Error: Gerber export returned result " << result << ": " << command << std::endl;
                             }
                         }
 
@@ -404,7 +404,7 @@ int main(int argc, const char **argv) {
                             int result = std::system(command.c_str());
                             if (result != 0) {
                                 error = true;
-                                std::cerr << "Error: Drill export, kicad-cli returned result " << result << std::endl;
+                                std::cerr << "Error: Drill export returned result " << result << ": " << command << std::endl;
                             }
                         }
 
