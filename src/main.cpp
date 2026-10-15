@@ -77,6 +77,8 @@ struct Job {
     // output file name (without extension)
     std::string name;
 
+    std::string variantName;
+
     // export and zip gerber files using kicad-cli
     bool gerber;
 
@@ -135,11 +137,12 @@ int main(int argc, const char **argv) {
         return 1;
 
     // parse arguments
-    std::string name;
+    std::string jobName;
+    std::string variantName;
     bool gerber = false;
     bool bom = false;
-    bool drill = false;
     Manufacturer manufacturer = Manufacturer::GENERIC;
+    bool drill = false;
     std::list<Job> jobs;
     fs::path outDir;
     for (int i = 1; i < argc; ++i) {
@@ -147,7 +150,11 @@ int main(int argc, const char **argv) {
         if (arg == "-n") {
             // set name of current job
             ++i;
-            name = argv[i];
+            jobName = argv[i];
+        } else if (arg == "-v") {
+            // set variant to use
+            ++i;
+            variantName = argv[i];
         } else if (arg == "-g") {
             // zip gerber
             gerber = true;
@@ -164,13 +171,13 @@ int main(int argc, const char **argv) {
             if (gerber || bom || drill) {
                 // argument is path to .kicad_pcb file: add job
                 fs::path pcbPath = arg;
-                if (name.empty())
-                    name = pcbPath.stem().string();
+                if (jobName.empty())
+                    jobName = pcbPath.stem().string();
 
-                jobs.emplace_back(name, gerber, bom, manufacturer, drill, pcbPath);
+                jobs.emplace_back(jobName, variantName, gerber, bom, manufacturer, drill, pcbPath);
 
                 // clear
-                name.clear();
+                jobName.clear();
                 gerber = false;
                 bom = false;
                 drill = false;
@@ -230,11 +237,16 @@ int main(int argc, const char **argv) {
         // get version suffix for file names
         std::string version;
         {
+            if (!job.variantName.empty()) {
+                version = '-';
+                version += job.variantName;
+            }
+
             auto titleBlockContainer = file.find("title_block");
             if (titleBlockContainer) {
                 auto revContainer = titleBlockContainer->find("rev");
                 if (revContainer) {
-                    version = '-';
+                    version += '-';
                     version += revContainer->getString(0);
                     substituteVariables(version, variables);
                 }
@@ -454,7 +466,7 @@ int main(int argc, const char **argv) {
         }
 
         if (job.bom && manufacturer == Manufacturer::GENERIC) {
-            // open generic BOM file
+            // export generic BOM file
             fs::path bomPath = outDir / (job.name + version + ".csv");
             std::ofstream bom(bomPath);
             if (bom.is_open()) {
@@ -491,7 +503,8 @@ int main(int argc, const char **argv) {
                             bool doNotPopulate = false;
                             bool excludeFromBom = false;
                             bool throughHole = false;
-                            for (auto element2 : container1->elements) {
+                            kicad::Container *variant = nullptr;
+                            for (auto element2 : footprint->elements) {
                                 auto property = dynamic_cast<kicad::Container *>(element2);
                                 if (property) {
                                     if (property->id == "property") {
@@ -523,12 +536,23 @@ int main(int argc, const char **argv) {
                                     if (property->id == "pad") {
                                         auto padName = property->getString(0);
                                         padNames.insert(padName);
-                                        //++padCount;
+                                    }
+                                    if (property->id == "variant" && property->findString("name") == job.variantName) {
+                                        variant = property;
                                     }
                                 }
                             }
 
-                            if (!excludeFromBom) {
+                            // override by variant
+                            if (variant != nullptr) {
+                                std::string dnp = variant->findString("dnp");
+                                if (dnp == "yes")
+                                    doNotPopulate = true;
+                                else if (dnp == "no")
+                                    doNotPopulate = false;
+                            }
+
+                            if (!doNotPopulate && !excludeFromBom) {
                                 auto &v = bomMap[{getType(reference), value, voltage, footprintName, manufacturer, mpn}];
                                 v.references.push_back(reference);
                                 int padCount = padNames.size();
@@ -582,11 +606,9 @@ int main(int argc, const char **argv) {
         }
 
         if (job.bom && manufacturer == Manufacturer::JLCPCB) {
-            // open BOM file for JLCPCB
+            // export BOM and CPL files for JLCPCB
             fs::path bomPath = outDir / (job.name + version + "-BOM.csv");
             std::ofstream bom(bomPath);
-
-            // open CPL file
             fs::path cplPath = outDir / (job.name + version + "-CPL.csv");
             std::ofstream cpl(cplPath);
 
@@ -615,7 +637,7 @@ int main(int argc, const char **argv) {
                             if (pos != std::string::npos)
                                 footprintName.erase(0, pos + 1);
 
-                            // get layer
+                            // get layer (top="F.Cu" or bottom="B.CU")
                             auto layer = footprint->findString("layer");
 
                             // get footprint properties
@@ -625,7 +647,8 @@ int main(int argc, const char **argv) {
                             std::string lcscPn;
                             bool doNotPopulate = false;
                             bool excludeFromBom = false;
-                            for (auto element2 : container1->elements) {
+                            kicad::Container *variant = nullptr;
+                            for (auto element2 : footprint->elements) {
                                 auto property = dynamic_cast<kicad::Container *>(element2);
                                 if (property) {
                                     if (property->id == "at") {
@@ -651,7 +674,19 @@ int main(int argc, const char **argv) {
                                         doNotPopulate = property->contains("dnp");
                                         excludeFromBom = property->contains("exclude_from_bom");
                                     }
+                                    if (property->id == "variant" && property->findString("name") == job.variantName) {
+                                        variant = property;
+                                    }
                                 }
+                            }
+
+                            // override by variant
+                            if (variant != nullptr) {
+                                std::string dnp = variant->findString("dnp");
+                                if (dnp == "yes")
+                                    doNotPopulate = true;
+                                else if (dnp == "no")
+                                    doNotPopulate = false;
                             }
 
                             if (!doNotPopulate && !excludeFromBom) {
